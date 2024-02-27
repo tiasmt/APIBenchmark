@@ -32,13 +32,12 @@ public class ApiLatency : IApiLatency
             if (_latencyOptions.HasWarmup) 
                 await Warmup(requestParam);
 
-            var request = CreateRequest(requestParam);
-            
             AnsiConsole.Foreground = Color.Grey58;
             AnsiConsole.WriteLine($"Testing latency for: {requestParam.Endpoint}");
             
             for (var i = 0; i < _latencyOptions.NumberOfRequests; i++)
             {
+                var request = CreateRequest(requestParam);
                 await Task.Delay(_latencyOptions.LeadingDelayInMilliseconds);
                 
                 var stopwatch = Stopwatch.StartNew();
