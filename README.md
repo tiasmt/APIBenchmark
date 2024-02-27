@@ -1,8 +1,10 @@
-APIBenchmark: A C# API Performance Benchmarking Tool
+# APIBenchmark
+
+*A C# API Performance Benchmarking Tool*
 
 Tool designed to measure and analyze the performance of APIs. It allows you to benchmark your API's response times and generate statistics, providing insights into its characteristics.
 
-Features:
+## Features:
 
 Benchmark multiple APIs: Compare the performance of different APIs, allowing for side-by-side analysis.
 - Flexible configuration: Configure the benchmark parameters easily through an appsettings.json file.
@@ -18,3 +20,9 @@ Benchmark multiple APIs: Compare the performance of different APIs, allowing for
   - 90th percentile: The response time at which 90% of requests are faster
   - 95th percentile: The response time at which 95% of requests are faster
   - 99th percentile: The response time at which 99% of requests are faster
+ 
+
+## Statistics / Results:
+ 
+  <img width="1780" alt="image" src="https://github.com/tiasmt/APIBenchmark/assets/20759400/d149ec0d-b1b8-47b2-9c3f-052db7ed6e7d">
+
