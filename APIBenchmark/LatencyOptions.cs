@@ -8,4 +8,6 @@ public class LatencyOptions
     public int LeadingDelayInMilliseconds { get; set; }
     public List<RequestParams> Requests { get; set; }
     public bool ExportResults { get; set; }
+    public int BucketSizeInMilliseconds { get; set; }
+    public int? InitialBucket { get; set; }
 }

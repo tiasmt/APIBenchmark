@@ -28,37 +28,37 @@ public class ApiLatency : IApiLatency
         foreach (var requestParam in _latencyOptions.Requests)
         {
             var latencies = new List<TimeSpan>(_latencyOptions.NumberOfRequests);
-            
-            if (_latencyOptions.HasWarmup) 
+
+            if (_latencyOptions.HasWarmup)
                 await Warmup(requestParam);
 
             AnsiConsole.Foreground = Color.Grey58;
             AnsiConsole.WriteLine($"Testing latency for: {requestParam.Endpoint}");
-            
+
             for (var i = 0; i < _latencyOptions.NumberOfRequests; i++)
             {
                 var request = CreateRequest(requestParam);
                 await Task.Delay(_latencyOptions.LeadingDelayInMilliseconds);
-                
+
                 var stopwatch = Stopwatch.StartNew();
                 var response = await _httpClient.SendAsync(request);
-                
-                if (!response.IsSuccessStatusCode) 
+
+                if (!response.IsSuccessStatusCode)
                     AnsiConsole.MarkupLine($"[red]Error: {response.StatusCode}[/]");
-                
+
                 stopwatch.Stop();
                 var elapsedTime = stopwatch.Elapsed;
                 AnsiConsole.MarkupLine($"[grey58]Request {i + 1} took {elapsedTime.TotalMilliseconds} ms[/]");
                 latencies.Add(elapsedTime);
             }
-            
+
             AnsiConsole.Clear();
             var orderedLatencies = latencies.OrderBy(x => x).ToList();
             DisplayChart(orderedLatencies, requestParam.Name);
             var statistics = CalculateStatistics(orderedLatencies);
             DisplaySummary(statistics);
-            
-            if(_latencyOptions.ExportResults)
+
+            if (_latencyOptions.ExportResults)
                 ExportToCsv(requestParam.Name, statistics);
         }
     }
@@ -95,8 +95,8 @@ public class ApiLatency : IApiLatency
 
     private static Statistics CalculateStatistics(List<TimeSpan> orderedLatencies)
     {
-		var minimum = orderedLatencies[0].TotalMilliseconds;
-		var maximum = orderedLatencies[^1].TotalMilliseconds;
+        var minimum = orderedLatencies[0].TotalMilliseconds;
+        var maximum = orderedLatencies[^1].TotalMilliseconds;
         var average = orderedLatencies.Average(x => x.TotalMilliseconds);
         var median = CalculateMedian(orderedLatencies);
         var percentile99 = CalculatePercentile(orderedLatencies, 0.99);
@@ -114,30 +114,32 @@ public class ApiLatency : IApiLatency
             Percentile90 = percentile90
         };
     }
-    
-    private static void DisplayChart(IEnumerable<TimeSpan> orderedLatencies, string requestName)
+
+    private void DisplayChart(IEnumerable<TimeSpan> orderedLatencies, string requestName)
     {
         PrintTitle();
         Console.WriteLine();
         Console.WriteLine();
-        
-        var histogram = orderedLatencies.Select(x => x.TotalMilliseconds)
-            .GroupBy(Math.Floor)
-            .Select(x => new { Milliseconds =x.Key, Count = x.Count() })
-            .ToList();
-        
+
+        var bucketSize = _latencyOptions.BucketSizeInMilliseconds;
+        var lookup = orderedLatencies.ToLookup(x => (int)x.TotalMilliseconds / bucketSize);
+        var minimum = _latencyOptions.InitialBucket ?? lookup.Min(x => x.Key);
+        var maximum = lookup.Max(x => x.Key);
+        var histogram = Enumerable.Range(minimum, maximum - minimum + 1)
+            .Select(x => new { Range = $"{x * bucketSize}-{(x + 1) * bucketSize}", Count = lookup[x].Count(), });
+
         // Render bar chart
         AnsiConsole.Write(new BarChart()
             .Width(1000)
             .Label($"[bold underline]Latencies {requestName}[/]")
             .CenterLabel()
             .AddItems(histogram, (item) => new BarChartItem(
-                item.Milliseconds.ToString("N0"), item.Count, Color.DarkKhaki)));
-        
+                item.Range, item.Count, Color.DarkKhaki)));
+
         Console.WriteLine();
         Console.WriteLine();
     }
-    
+
     private static void DisplaySummary(Statistics statistics)
     {
         // Create a table
@@ -145,8 +147,8 @@ public class ApiLatency : IApiLatency
         table.Expand();
 
         // Add some columns
-		table.AddColumn("Minimum").Centered();
-		table.AddColumn("Maximum").Centered();
+        table.AddColumn("Minimum").Centered();
+        table.AddColumn("Maximum").Centered();
         table.AddColumn("Average").Centered();
         table.AddColumn("Median").Centered();
         table.AddColumn("90th").Centered();
@@ -167,10 +169,10 @@ public class ApiLatency : IApiLatency
         // Render the table to the console
         AnsiConsole.Write(table);
     }
-    
+
     private static double CalculateMedian(IReadOnlyList<TimeSpan> orderedLatencies) =>
-        ((orderedLatencies[orderedLatencies.Count / 2].TotalMilliseconds) + (orderedLatencies[(orderedLatencies.Count + 1) / 2]).TotalMilliseconds)/2;
-    
+        ((orderedLatencies[orderedLatencies.Count / 2].TotalMilliseconds) + (orderedLatencies[(orderedLatencies.Count + 1) / 2]).TotalMilliseconds) / 2;
+
     private static double CalculatePercentile(IReadOnlyList<TimeSpan> orderedLatencies, double percentile)
     {
         var index = (int)Math.Floor(orderedLatencies.Count * percentile);
@@ -192,10 +194,10 @@ public class ApiLatency : IApiLatency
         }
 
         if (requestParams.Headers is null || requestParams.Headers?.Count <= 0) return request;
-        
+
         foreach (var (key, value) in requestParams.Headers!)
             request.Headers.Add(key, value);
-        
+
         return request;
     }
 
