@@ -24,5 +24,6 @@ Benchmark multiple APIs: Compare the performance of different APIs, allowing for
 
 ## Statistics / Results:
  
-  <img width="1780" alt="image" src="https://github.com/tiasmt/APIBenchmark/assets/20759400/d149ec0d-b1b8-47b2-9c3f-052db7ed6e7d">
+  ![image](https://github.com/tiasmt/APIBenchmark/assets/20759400/498cff8a-c35d-482d-a07d-f11a6d4e8f37)
+
 
