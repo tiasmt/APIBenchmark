@@ -98,6 +98,7 @@ public class ApiLatency : IApiLatency
         var minimum = orderedLatencies[0].TotalMilliseconds;
         var maximum = orderedLatencies[^1].TotalMilliseconds;
         var average = orderedLatencies.Average(x => x.TotalMilliseconds);
+        var total = orderedLatencies.Sum(x => x.TotalMilliseconds);
         var median = CalculateMedian(orderedLatencies);
         var percentile99 = CalculatePercentile(orderedLatencies, 0.99);
         var percentile95 = CalculatePercentile(orderedLatencies, 0.95);
@@ -108,6 +109,7 @@ public class ApiLatency : IApiLatency
             Minimum = minimum,
             Maximum = maximum,
             Average = average,
+            Total = total,
             Median = median,
             Percentile99 = percentile99,
             Percentile95 = percentile95,
@@ -118,15 +120,14 @@ public class ApiLatency : IApiLatency
     private void DisplayChart(IEnumerable<TimeSpan> orderedLatencies, string requestName)
     {
         PrintTitle();
-        Console.WriteLine();
-        Console.WriteLine();
+        Padding();
 
         var bucketSize = _latencyOptions.BucketSizeInMilliseconds;
-        var lookup = orderedLatencies.ToLookup(x => (int)x.TotalMilliseconds / bucketSize);
+        var lookup = orderedLatencies.ToLookup(x => (int) x.TotalMilliseconds / bucketSize);
         var minimum = _latencyOptions.InitialBucket ?? lookup.Min(x => x.Key);
         var maximum = lookup.Max(x => x.Key);
         var histogram = Enumerable.Range(minimum, maximum - minimum + 1)
-            .Select(x => new { Range = $"{x * bucketSize}-{(x + 1) * bucketSize}", Count = lookup[x].Count(), });
+            .Select(x => new {Range = $"{x * bucketSize}-{(x + 1) * bucketSize}", Count = lookup[x].Count(),});
 
         // Render bar chart
         AnsiConsole.Write(new BarChart()
@@ -136,9 +137,9 @@ public class ApiLatency : IApiLatency
             .AddItems(histogram, (item) => new BarChartItem(
                 item.Range, item.Count, Color.DarkKhaki)));
 
-        Console.WriteLine();
-        Console.WriteLine();
+        Padding();
     }
+
 
     private static void DisplaySummary(Statistics statistics)
     {
@@ -150,16 +151,18 @@ public class ApiLatency : IApiLatency
         table.AddColumn("Minimum").Centered();
         table.AddColumn("Maximum").Centered();
         table.AddColumn("Average").Centered();
+        table.AddColumn("Total").Centered();
         table.AddColumn("Median").Centered();
         table.AddColumn("90th").Centered();
         table.AddColumn("95th").Centered();
         table.AddColumn("99th").Centered();
-
+        
         // Add some rows
         table.AddRow(
             statistics.Minimum.ToString("F"),
             statistics.Maximum.ToString("F"),
             statistics.Average.ToString("F"),
+            statistics.Total.ToString("F"),
             statistics.Median.ToString("F"),
             statistics.Percentile90.ToString("F"),
             statistics.Percentile95.ToString("F"),
@@ -171,7 +174,7 @@ public class ApiLatency : IApiLatency
     }
 
     private static double CalculateMedian(IReadOnlyList<TimeSpan> orderedLatencies) =>
-        ((orderedLatencies[orderedLatencies.Count / 2].TotalMilliseconds) + (orderedLatencies[(orderedLatencies.Count + 1) / 2]).TotalMilliseconds) / 2;
+        (orderedLatencies[orderedLatencies.Count / 2].TotalMilliseconds + orderedLatencies[(orderedLatencies.Count + 1) / 2].TotalMilliseconds) / 2;
 
     private static double CalculatePercentile(IReadOnlyList<TimeSpan> orderedLatencies, double percentile)
     {
@@ -196,7 +199,9 @@ public class ApiLatency : IApiLatency
         if (requestParams.Headers is null || requestParams.Headers?.Count <= 0) return request;
 
         foreach (var (key, value) in requestParams.Headers!)
+        {
             request.Headers.Add(key, value);
+        }
 
         return request;
     }
@@ -207,6 +212,7 @@ public class ApiLatency : IApiLatency
         csv.AppendLine($"Minimum, {statistics.Minimum}");
         csv.AppendLine($"Maximum, {statistics.Maximum}");
         csv.AppendLine($"Average, {statistics.Average}");
+        csv.AppendLine($"Total, {statistics.Total}");
         csv.AppendLine($"Median, {statistics.Median}");
         csv.AppendLine($"90th, {statistics.Percentile90}");
         csv.AppendLine($"95th, {statistics.Percentile95}");
@@ -216,14 +222,21 @@ public class ApiLatency : IApiLatency
         AnsiConsole.MarkupLine($"[grey58]Exported to {filePath}[/]");
     }
 
-    internal readonly struct Statistics
+    private readonly struct Statistics
     {
         internal double Minimum { get; init; }
         internal double Maximum { get; init; }
         internal double Average { get; init; }
+        internal double Total { get; init; }
         internal double Median { get; init; }
         internal double Percentile99 { get; init; }
         internal double Percentile95 { get; init; }
         internal double Percentile90 { get; init; }
+    }
+
+    private static void Padding()
+    {
+        Console.WriteLine();
+        Console.WriteLine();
     }
 }
