@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text;
+using HdrHistogram;
 using Microsoft.Extensions.Options;
 using Spectre.Console;
 
@@ -34,12 +35,13 @@ public class ApiLatency : IApiLatency
 
             AnsiConsole.Foreground = Color.Grey58;
             AnsiConsole.WriteLine($"Testing latency for: {requestParam.Endpoint}");
-
+            var histogram = new LongHistogram(TimeStamp.Hours(1), 3);
             for (var i = 0; i < _latencyOptions.NumberOfRequests; i++)
             {
                 var request = CreateRequest(requestParam);
                 await Task.Delay(_latencyOptions.LeadingDelayInMilliseconds);
 
+                long startTimestamp = Stopwatch.GetTimestamp();
                 var stopwatch = Stopwatch.StartNew();
                 var response = await _httpClient.SendAsync(request);
 
@@ -47,6 +49,8 @@ public class ApiLatency : IApiLatency
                     AnsiConsole.MarkupLine($"[red]Error: {response.StatusCode}[/]");
 
                 stopwatch.Stop();
+                long elapsed = Stopwatch.GetTimestamp() - startTimestamp;
+                histogram.RecordValue(elapsed);
                 var elapsedTime = stopwatch.Elapsed;
                 AnsiConsole.MarkupLine($"[grey58]Request {i + 1} took {elapsedTime.TotalMilliseconds} ms[/]");
                 latencies.Add(elapsedTime);
@@ -60,6 +64,11 @@ public class ApiLatency : IApiLatency
 
             if (_latencyOptions.ExportResults)
                 ExportToCsv(requestParam.Name, statistics);
+            
+            var scalingRatio = OutputScalingFactor.TimeStampToMilliseconds;
+            histogram.OutputPercentileDistribution(
+              Console.Out,
+              outputValueUnitScalingRatio: scalingRatio);
         }
     }
 
