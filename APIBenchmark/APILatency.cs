@@ -52,7 +52,7 @@ public class ApiLatency : IApiLatency
                 long elapsed = Stopwatch.GetTimestamp() - startTimestamp;
                 histogram.RecordValue(elapsed);
                 var elapsedTime = stopwatch.Elapsed;
-                AnsiConsole.MarkupLine($"[grey58]Request {i + 1} took {elapsedTime.TotalMilliseconds} ms[/]");
+                AnsiConsole.MarkupLine($"[{DisplayConstants.Secondary}]Request[/] {i + 1} took {elapsedTime.TotalMilliseconds} ms");
                 latencies.Add(elapsedTime);
             }
 
@@ -60,15 +60,16 @@ public class ApiLatency : IApiLatency
             var orderedLatencies = latencies.OrderBy(x => x).ToList();
             DisplayChart(orderedLatencies, requestParam.Name);
             var statistics = CalculateStatistics(orderedLatencies);
-            DisplaySummary(statistics);
+            DisplayStatistics(statistics);
+            DisplaySummary();
 
             if (_latencyOptions.ExportResults)
                 ExportToCsv(requestParam.Name, statistics);
             
-            var scalingRatio = OutputScalingFactor.TimeStampToMilliseconds;
-            histogram.OutputPercentileDistribution(
-              Console.Out,
-              outputValueUnitScalingRatio: scalingRatio);
+            //var scalingRatio = OutputScalingFactor.TimeStampToMilliseconds;
+            //histogram.OutputPercentileDistribution(
+            //  Console.Out,
+            //  outputValueUnitScalingRatio: scalingRatio);
         }
     }
 
@@ -141,7 +142,7 @@ public class ApiLatency : IApiLatency
         // Render bar chart
         AnsiConsole.Write(new BarChart()
             .Width(1000)
-            .Label($"[bold underline]Latencies {requestName}[/]")
+            .Label($"[bold underline]Histogram: [{DisplayConstants.Secondary}]{requestName}[/][/]")
             .CenterLabel()
             .AddItems(histogram, (item) => new BarChartItem(
                 item.Range, item.Count, Color.DarkKhaki)));
@@ -149,38 +150,69 @@ public class ApiLatency : IApiLatency
         Padding();
     }
 
-
-    private static void DisplaySummary(Statistics statistics)
+    private static void DisplayStatistics(Statistics statistics)
     {
         // Create a table
         var table = new Table();
         table.Expand();
 
-        // Add some columns
-        table.AddColumn("Minimum").Centered();
-        table.AddColumn("Maximum").Centered();
-        table.AddColumn("Average").Centered();
-        table.AddColumn("Total").Centered();
-        table.AddColumn("Median").Centered();
-        table.AddColumn("90th").Centered();
-        table.AddColumn("95th").Centered();
-        table.AddColumn("99th").Centered();
-        
+        table.AddColumn("Stats").Centered();
+        table.AddColumn("Percentiles").Centered();
+
         // Add some rows
         table.AddRow(
-            statistics.Minimum.ToString("F"),
-            statistics.Maximum.ToString("F"),
-            statistics.Average.ToString("F"),
-            statistics.Total.ToString("F"),
-            statistics.Median.ToString("F"),
-            statistics.Percentile90.ToString("F"),
-            statistics.Percentile95.ToString("F"),
-            statistics.Percentile99.ToString("F")
-        );
+            DisplayStat(statistics.Average, "average"),
+            DisplayPercentile(statistics.Percentile90, "90"));
+        
+        table.AddRow(
+            DisplayStat(statistics.Median, "median"),
+            DisplayPercentile(statistics.Percentile95, "95"));
+        
+        table.AddRow(
+            DisplayStat(statistics.Minimum, "minimum"),
+            DisplayPercentile(statistics.Percentile99, "99"));
 
-        // Render the table to the console
+        table.AddRow(
+            DisplayStat(statistics.Maximum, "maximum"),
+            string.Empty);
+        
+        table.AddRow(
+            DisplayStat(statistics.Total, "total"),
+            string.Empty);
+        
         AnsiConsole.Write(table);
     }
+    
+    private static void DisplaySummary()
+    {
+        // Create a table
+        var table = new Table();
+        table.Expand();
+
+        table.AddColumn("").Centered();
+        table.AddColumn("").Centered();
+        table.HideHeaders();
+
+        // Add some rows
+        table.AddRow(
+            "Exported File",
+            "latency.csv");
+        
+        table.AddRow(
+            "Total Requests",
+            "1000");
+        
+        table.AddRow(
+            "Test Run Time",
+            $"1 [{DisplayConstants.Secondary}]seconds[/]");
+        
+        AnsiConsole.Write(table);
+    }
+    
+    private static string DisplayStat(double value, string label)
+        => $"[{DisplayConstants.Primary}]|[/] {value:F} [{DisplayConstants.Secondary}]{label}[/]";
+    private static string DisplayPercentile(double percentile, string label)
+        => $"{percentile:F} [{DisplayConstants.Secondary}]{label}th[/]";
 
     private static double CalculateMedian(IReadOnlyList<TimeSpan> orderedLatencies) =>
         (orderedLatencies[orderedLatencies.Count / 2].TotalMilliseconds + orderedLatencies[(orderedLatencies.Count + 1) / 2].TotalMilliseconds) / 2;
@@ -228,7 +260,7 @@ public class ApiLatency : IApiLatency
         csv.AppendLine($"99th, {statistics.Percentile99}");
         var filePath = $"{requestName}_latency.csv";
         File.WriteAllText(filePath, csv.ToString());
-        AnsiConsole.MarkupLine($"[grey58]Exported to {filePath}[/]");
+        AnsiConsole.MarkupLine($"[{DisplayConstants.Secondary}]Exported to {filePath}[/]");
     }
 
     private readonly struct Statistics
@@ -248,4 +280,10 @@ public class ApiLatency : IApiLatency
         Console.WriteLine();
         Console.WriteLine();
     }
+}
+
+internal static class DisplayConstants
+{
+    internal const string Primary = "yellow";
+    internal const string Secondary = "grey58";
 }
