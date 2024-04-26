@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 using HdrHistogram;
@@ -61,7 +62,7 @@ public class ApiLatency : IApiLatency
             DisplayChart(orderedLatencies, requestParam.Name);
             var statistics = CalculateStatistics(orderedLatencies);
             DisplayStatistics(statistics);
-            DisplaySummary();
+            DisplaySummary(requestParam.Name, statistics.Total.ToString(CultureInfo.InvariantCulture));
 
             if (_latencyOptions.ExportResults)
                 ExportToCsv(requestParam.Name, statistics);
@@ -154,6 +155,8 @@ public class ApiLatency : IApiLatency
 
     private static void DisplayStatistics(Statistics statistics)
     {
+        SubTitle("Statistics");
+        
         // Create a table
         var table = new Table();
         table.Expand();
@@ -185,8 +188,10 @@ public class ApiLatency : IApiLatency
         AnsiConsole.Write(table);
     }
 
-    private static void DisplaySummary()
+    private void DisplaySummary(string requestName, string totalTime)
     {
+        SubTitle("Summary");
+        
         // Create a table
         var table = new Table();
         table.Expand();
@@ -198,23 +203,26 @@ public class ApiLatency : IApiLatency
         // Add some rows
         table.AddRow(
             "Exported File",
-            "latency.csv");
+            $"{Prefix()} {requestName}_latency.csv");
         
         table.AddRow(
             "Total Requests",
-            "1000");
+            $"{Prefix()} {_latencyOptions.NumberOfRequests.ToString()}");
         
         table.AddRow(
             "Test Run Time",
-            $"1 [{DisplayConstants.Secondary}]seconds[/]");
+            $"{Prefix()} {totalTime} [{DisplayConstants.Secondary}]seconds[/]");
         
         AnsiConsole.Write(table);
     }
     
+    private static string Prefix(char prefix = '|')
+        => $"[{DisplayConstants.Primary}]{prefix}[/]";
+    
     private static string DisplayStat(double value, string label)
-        => $"[{DisplayConstants.Primary}]|[/] {value:F} [{DisplayConstants.Secondary}]{label}[/]";
+        => $"{Prefix()} {value:F} [{DisplayConstants.Secondary}]{label}[/]";
     private static string DisplayPercentile(double percentile, string label)
-        => $"{percentile:F} [{DisplayConstants.Secondary}]{label}th[/]";
+        => $"{Prefix()} {percentile:F} [{DisplayConstants.Secondary}]{label}th[/]";
 
     private static double CalculateMedian(IReadOnlyList<TimeSpan> orderedLatencies) =>
         (orderedLatencies[orderedLatencies.Count / 2].TotalMilliseconds + orderedLatencies[(orderedLatencies.Count + 1) / 2].TotalMilliseconds) / 2;
@@ -283,6 +291,16 @@ public class ApiLatency : IApiLatency
     {
         Console.WriteLine();
         Console.WriteLine();
+    }
+    
+    private static void SubTitle(string title)
+    {
+        var panel = new Panel($"[{DisplayConstants.Secondary}]{title}[/]")
+        {
+            Border = BoxBorder.Ascii,
+        };
+
+        AnsiConsole.Write(panel);
     }
 }
 
