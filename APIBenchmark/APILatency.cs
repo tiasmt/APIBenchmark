@@ -41,7 +41,7 @@ public class ApiLatency : IApiLatency
                 var request = CreateRequest(requestParam);
                 await Task.Delay(_latencyOptions.LeadingDelayInMilliseconds);
 
-                long startTimestamp = Stopwatch.GetTimestamp();
+                var startTimestamp = Stopwatch.GetTimestamp();
                 var stopwatch = Stopwatch.StartNew();
                 var response = await _httpClient.SendAsync(request);
 
@@ -49,7 +49,7 @@ public class ApiLatency : IApiLatency
                     AnsiConsole.MarkupLine($"[red]Error: {response.StatusCode}[/]");
 
                 stopwatch.Stop();
-                long elapsed = Stopwatch.GetTimestamp() - startTimestamp;
+                var elapsed = Stopwatch.GetTimestamp() - startTimestamp;
                 histogram.RecordValue(elapsed);
                 var elapsedTime = stopwatch.Elapsed;
                 AnsiConsole.MarkupLine($"[{DisplayConstants.Secondary}]Request[/] {i + 1} took {elapsedTime.TotalMilliseconds} ms");
@@ -110,6 +110,7 @@ public class ApiLatency : IApiLatency
         var average = orderedLatencies.Average(x => x.TotalMilliseconds);
         var total = orderedLatencies.Sum(x => x.TotalMilliseconds);
         var median = CalculateMedian(orderedLatencies);
+        var percentile999 = CalculatePercentile(orderedLatencies, 0.999);
         var percentile99 = CalculatePercentile(orderedLatencies, 0.99);
         var percentile95 = CalculatePercentile(orderedLatencies, 0.95);
         var percentile90 = CalculatePercentile(orderedLatencies, 0.90);
@@ -121,6 +122,7 @@ public class ApiLatency : IApiLatency
             Average = average,
             Total = total,
             Median = median,
+            Percentile999 = percentile999,
             Percentile99 = percentile99,
             Percentile95 = percentile95,
             Percentile90 = percentile90
@@ -163,32 +165,32 @@ public class ApiLatency : IApiLatency
         table.AddRow(
             DisplayStat(statistics.Average, "average"),
             DisplayPercentile(statistics.Percentile90, "90"));
-        
+
         table.AddRow(
             DisplayStat(statistics.Median, "median"),
             DisplayPercentile(statistics.Percentile95, "95"));
-        
+
         table.AddRow(
             DisplayStat(statistics.Minimum, "minimum"),
             DisplayPercentile(statistics.Percentile99, "99"));
 
         table.AddRow(
             DisplayStat(statistics.Maximum, "maximum"),
-            string.Empty);
+            DisplayPercentile(statistics.Percentile999, "99.9"));
         
         table.AddRow(
             DisplayStat(statistics.Total, "total"),
             string.Empty);
-        
+
         AnsiConsole.Write(table);
     }
-    
+
     private static void DisplaySummary()
     {
         // Create a table
         var table = new Table();
         table.Expand();
-
+        
         table.AddColumn("").Centered();
         table.AddColumn("").Centered();
         table.HideHeaders();
@@ -258,6 +260,7 @@ public class ApiLatency : IApiLatency
         csv.AppendLine($"90th, {statistics.Percentile90}");
         csv.AppendLine($"95th, {statistics.Percentile95}");
         csv.AppendLine($"99th, {statistics.Percentile99}");
+        csv.AppendLine($"99.9th, {statistics.Percentile999}");
         var filePath = $"{requestName}_latency.csv";
         File.WriteAllText(filePath, csv.ToString());
         AnsiConsole.MarkupLine($"[{DisplayConstants.Secondary}]Exported to {filePath}[/]");
@@ -270,6 +273,7 @@ public class ApiLatency : IApiLatency
         internal double Average { get; init; }
         internal double Total { get; init; }
         internal double Median { get; init; }
+        internal double Percentile999 { get; init; }
         internal double Percentile99 { get; init; }
         internal double Percentile95 { get; init; }
         internal double Percentile90 { get; init; }
