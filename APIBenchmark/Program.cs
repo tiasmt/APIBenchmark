@@ -15,9 +15,9 @@ class Program
 
         // Configure services with dependency injection
         var services = new ServiceCollection();
-        services.Configure<LatencyOptions>(opts =>
+        services.Configure<Options>(opts =>
         {
-            configuration.GetSection("LatencyOptions").Bind(opts);
+            configuration.GetSection("Options").Bind(opts);
         });
         services.AddScoped<IApiLatency, ApiLatency>();
 
