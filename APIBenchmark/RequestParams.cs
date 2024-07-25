@@ -10,6 +10,11 @@ public class RequestParams
     public Dictionary<string, string>? Headers { get; set; }
 }
 
+public class LoadParams
+{
+   
+}
+
 public enum Method
 {
     POST,

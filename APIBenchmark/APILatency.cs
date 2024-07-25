@@ -35,7 +35,7 @@ public class ApiLatency : IApiLatency
 
     private async Task LatencyProcess()
     {
-        foreach (var requestParam in _options.Requests)
+        foreach (var requestParam in _options.LatencyOptions.Requests)
         {
             var latencies = new List<TimeSpan>(_options.NumberOfRequests);
 
@@ -89,34 +89,42 @@ public class ApiLatency : IApiLatency
     {
         AnsiConsole.Foreground = Color.Grey58;
 
-        //if (_options.HasWarmup)
-        //{
-        //    foreach (var requestParam in _options.Requests) await Warmup(requestParam);
-        //}
-
         var latencies = new List<TimeSpan>(_options.NumberOfRequests);
         var requestTasks = new List<Task<HttpResponseMessage>>();
 
-        var stopwatch = Stopwatch.StartNew();
-        foreach (var requestParam in _options.Requests)
+        var defaultRequest = _options.LoadOptions.DefaultRequest;
+        
+        AnsiConsole.WriteLine($"Testing load for: {defaultRequest.Type} | {defaultRequest.Name} | {defaultRequest.Endpoint}");
+        int incrementCount = 0;
+        var iteration = 1;
+        while (incrementCount != _options.LoadOptions.Variables.Count)
         {
-            AnsiConsole.WriteLine($"Testing load for: {requestParam.Endpoint}");
+            var stopwatch = Stopwatch.StartNew();
+            foreach (var requestParam in _options.LoadOptions.Variables)
+            {
+                defaultRequest.Body += requestParam;
+                var request = CreateRequest(defaultRequest);
+                var requestTask = _httpClient.SendAsync(request);
+                requestTasks.Add(requestTask);
+                incrementCount++;
+                if (incrementCount >= _options.LoadOptions.Increment * iteration)
+                    break;
+            }
 
-            var request = CreateRequest(requestParam);
-            var requestTask = _httpClient.SendAsync(request);
-            requestTasks.Add(requestTask);
+            var responses = await Task.WhenAll(requestTasks);
+            var failedResponseMessages = responses.Where(x => !x.IsSuccessStatusCode);
+
+            foreach (var failedResponseMessage in failedResponseMessages)
+                AnsiConsole.MarkupLine($"[red]Error: {failedResponseMessage.RequestMessage}[/]");
+
+            stopwatch.Stop();
+            var elapsedTime = stopwatch.Elapsed;
+            AnsiConsole.MarkupLine(
+                $"[{DisplayConstants.Secondary}]Batch of [/] {incrementCount} requests took {elapsedTime.TotalMilliseconds} ms");
+            incrementCount = 0;     
+            iteration++;
         }
 
-        var responses = await Task.WhenAll(requestTasks);
-        var failedResponseMessages = responses.Where(x => !x.IsSuccessStatusCode);
-
-        foreach (var failedResponseMessage in failedResponseMessages)
-            AnsiConsole.MarkupLine($"[red]Error: {failedResponseMessage.RequestMessage}[/]");
-
-        stopwatch.Stop();
-        var elapsedTime = stopwatch.Elapsed;
-        AnsiConsole.MarkupLine($"[grey58]Batch of {_options.Requests.Count} took {elapsedTime.TotalMilliseconds} ms[/]");
-        latencies.Add(elapsedTime);
         Console.ReadLine();
         AnsiConsole.Clear();
     }
@@ -355,5 +363,5 @@ public class ApiLatency : IApiLatency
 internal static class DisplayConstants
 {
     internal const string Primary = "yellow";
-    internal const string Secondary = "grey58";
+    internal const string Secondary = "grey";
 }
