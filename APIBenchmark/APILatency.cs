@@ -16,31 +16,42 @@ public interface IApiLatency
 public class ApiLatency : IApiLatency
 {
     private readonly HttpClient _httpClient = new();
-    private readonly LatencyOptions _latencyOptions;
+    private readonly Options _options;
 
-    public ApiLatency(IOptions<LatencyOptions> options)
+    public ApiLatency(IOptions<Options> options)
     {
-        _latencyOptions = options.Value;
+        _options = options.Value;
     }
 
     public async Task Process()
     {
         PrintTitle();
 
-        foreach (var requestParam in _latencyOptions.Requests)
-        {
-            var latencies = new List<TimeSpan>(_latencyOptions.NumberOfRequests);
+        if (!_options.IsLoadTest)
+            await LatencyProcess();
+        else
+            await LoadProcess();
+    }
 
-            if (_latencyOptions.HasWarmup)
+    private async Task LatencyProcess()
+    {
+        foreach (var requestParam in _options.LatencyOptions.Requests)
+        {
+            var latencies = new List<TimeSpan>(_options.NumberOfRequests);
+
+            if (_options.HasWarmup)
                 await Warmup(requestParam);
 
             AnsiConsole.Foreground = Color.Grey58;
             AnsiConsole.WriteLine($"Testing latency for: {requestParam.Endpoint}");
+
             var histogram = new LongHistogram(TimeStamp.Hours(1), 3);
-            for (var i = 0; i < _latencyOptions.NumberOfRequests; i++)
+
+            for (var i = 0; i < _options.NumberOfRequests; i++)
             {
+
                 var request = CreateRequest(requestParam);
-                await Task.Delay(_latencyOptions.LeadingDelayInMilliseconds);
+                await Task.Delay(_options.LeadingDelayInMilliseconds);
 
                 var startTimestamp = Stopwatch.GetTimestamp();
                 var stopwatch = Stopwatch.StartNew();
@@ -64,14 +75,58 @@ public class ApiLatency : IApiLatency
             DisplayStatistics(statistics);
             DisplaySummary(requestParam.Name, statistics.Total.ToString(CultureInfo.InvariantCulture));
 
-            if (_latencyOptions.ExportResults)
+            if (_options.ExportResults)
                 ExportToCsv(requestParam.Name, statistics);
-            
+
             //var scalingRatio = OutputScalingFactor.TimeStampToMilliseconds;
             //histogram.OutputPercentileDistribution(
             //  Console.Out,
             //  outputValueUnitScalingRatio: scalingRatio);
         }
+    }
+
+    private async Task LoadProcess()
+    {
+        AnsiConsole.Foreground = Color.Grey58;
+
+        var latencies = new List<TimeSpan>(_options.NumberOfRequests);
+        var requestTasks = new List<Task<HttpResponseMessage>>();
+
+        var defaultRequest = _options.LoadOptions.DefaultRequest;
+        
+        AnsiConsole.WriteLine($"Testing load for: {defaultRequest.Type} | {defaultRequest.Name} | {defaultRequest.Endpoint}");
+        int incrementCount = 0;
+        var iteration = 1;
+        while (incrementCount != _options.LoadOptions.Variables.Count)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            foreach (var requestParam in _options.LoadOptions.Variables)
+            {
+                defaultRequest.Body += requestParam;
+                var request = CreateRequest(defaultRequest);
+                var requestTask = _httpClient.SendAsync(request);
+                requestTasks.Add(requestTask);
+                incrementCount++;
+                if (incrementCount >= _options.LoadOptions.Increment * iteration)
+                    break;
+            }
+
+            var responses = await Task.WhenAll(requestTasks);
+            var failedResponseMessages = responses.Where(x => !x.IsSuccessStatusCode);
+
+            foreach (var failedResponseMessage in failedResponseMessages)
+                AnsiConsole.MarkupLine($"[red]Error: {failedResponseMessage.RequestMessage}[/]");
+
+            stopwatch.Stop();
+            var elapsedTime = stopwatch.Elapsed;
+            AnsiConsole.MarkupLine(
+                $"[{DisplayConstants.Secondary}]Batch of [/] {incrementCount} requests took {elapsedTime.TotalMilliseconds} ms");
+            incrementCount = 0;     
+            iteration++;
+        }
+
+        Console.ReadLine();
+        AnsiConsole.Clear();
     }
 
     private static void PrintTitle()
@@ -93,12 +148,12 @@ public class ApiLatency : IApiLatency
 
                 while (!ctx.IsFinished)
                 {
-                    for (var i = 0; i < _latencyOptions.WarmupIterations; i++)
+                    for (var i = 0; i < _options.WarmupIterations; i++)
                     {
                         var request = CreateRequest(requestParam);
                         await _httpClient.SendAsync(request);
                         // Increment
-                        warmupTask.Increment((double)100 / _latencyOptions.WarmupIterations);
+                        warmupTask.Increment((double)100 / _options.WarmupIterations);
                     }
                 }
             });
@@ -135,12 +190,12 @@ public class ApiLatency : IApiLatency
         PrintTitle();
         Padding();
 
-        var bucketSize = _latencyOptions.BucketSizeInMilliseconds;
-        var lookup = orderedLatencies.ToLookup(x => (int) x.TotalMilliseconds / bucketSize);
-        var minimum = _latencyOptions.InitialBucket ?? lookup.Min(x => x.Key);
+        var bucketSize = _options.DisplayOptions.BucketSizeInMilliseconds;
+        var lookup = orderedLatencies.ToLookup(x => (int)x.TotalMilliseconds / bucketSize);
+        var minimum = _options.InitialBucket ?? lookup.Min(x => x.Key);
         var maximum = lookup.Max(x => x.Key);
         var histogram = Enumerable.Range(minimum, maximum - minimum + 1)
-            .Select(x => new {Range = $"{x * bucketSize}-{(x + 1) * bucketSize}", Count = lookup[x].Count(),});
+            .Select(x => new { Range = $"{x * bucketSize}-{(x + 1) * bucketSize}", Count = lookup[x].Count(), });
 
         // Render bar chart
         AnsiConsole.Write(new BarChart()
@@ -156,7 +211,7 @@ public class ApiLatency : IApiLatency
     private static void DisplayStatistics(Statistics statistics)
     {
         SubTitle("Statistics");
-        
+
         // Create a table
         var table = new Table();
         table.Expand();
@@ -180,7 +235,7 @@ public class ApiLatency : IApiLatency
         table.AddRow(
             DisplayStat(statistics.Maximum, "maximum"),
             DisplayPercentile(statistics.Percentile999, "99.9"));
-        
+
         table.AddRow(
             DisplayStat(statistics.Total, "total"),
             string.Empty);
@@ -191,11 +246,11 @@ public class ApiLatency : IApiLatency
     private void DisplaySummary(string requestName, string totalTime)
     {
         SubTitle("Summary");
-        
+
         // Create a table
         var table = new Table();
         table.Expand();
-        
+
         table.AddColumn("").Centered();
         table.AddColumn("").Centered();
         table.HideHeaders();
@@ -204,28 +259,29 @@ public class ApiLatency : IApiLatency
         table.AddRow(
             "Exported File",
             $"{Prefix()} {requestName}_latency.csv");
-        
+
         table.AddRow(
             "Total Requests",
-            $"{Prefix()} {_latencyOptions.NumberOfRequests.ToString()}");
-        
+            $"{Prefix()} {_options.NumberOfRequests.ToString()}");
+
         table.AddRow(
             "Test Run Time",
             $"{Prefix()} {totalTime} [{DisplayConstants.Secondary}]seconds[/]");
-        
+
         AnsiConsole.Write(table);
     }
-    
+
     private static string Prefix(char prefix = '|')
         => $"[{DisplayConstants.Primary}]{prefix}[/]";
-    
+
     private static string DisplayStat(double value, string label)
         => $"{Prefix()} {value:F} [{DisplayConstants.Secondary}]{label}[/]";
     private static string DisplayPercentile(double percentile, string label)
         => $"{Prefix()} {percentile:F} [{DisplayConstants.Secondary}]{label}th[/]";
 
     private static double CalculateMedian(IReadOnlyList<TimeSpan> orderedLatencies) =>
-        (orderedLatencies[orderedLatencies.Count / 2].TotalMilliseconds + orderedLatencies[(orderedLatencies.Count + 1) / 2].TotalMilliseconds) / 2;
+        (orderedLatencies[orderedLatencies.Count / 2].TotalMilliseconds +
+         orderedLatencies[(orderedLatencies.Count + 1) / 2].TotalMilliseconds) / 2;
 
     private static double CalculatePercentile(IReadOnlyList<TimeSpan> orderedLatencies, double percentile)
     {
@@ -244,7 +300,7 @@ public class ApiLatency : IApiLatency
 
         if (!string.IsNullOrEmpty(requestParams.Body))
         {
-            request.Content = new StringContent(requestParams.Body, Encoding.UTF8, "application/json");
+            request.Content = new StringContent(requestParams.Body, null, "application/json");
         }
 
         if (requestParams.Headers is null || requestParams.Headers?.Count <= 0) return request;
@@ -292,7 +348,7 @@ public class ApiLatency : IApiLatency
         Console.WriteLine();
         Console.WriteLine();
     }
-    
+
     private static void SubTitle(string title)
     {
         var panel = new Panel($"[{DisplayConstants.Secondary}]{title}[/]")
@@ -307,5 +363,5 @@ public class ApiLatency : IApiLatency
 internal static class DisplayConstants
 {
     internal const string Primary = "yellow";
-    internal const string Secondary = "grey58";
+    internal const string Secondary = "grey";
 }
