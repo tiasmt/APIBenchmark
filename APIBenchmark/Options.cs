@@ -19,8 +19,8 @@ public class LoadOptions
     public int Increment { get; set; }
     public bool HasRampUp { get; set; }
     
-    public RequestParams DefaultRequest { get; set; } 
-    public List<string> Variables { get; set; }
+    public List<RequestParams> Requests { get; set; } 
+    public Dictionary<string, List<string>> Variables { get; set; }
 }
 
 public class LatencyOptions

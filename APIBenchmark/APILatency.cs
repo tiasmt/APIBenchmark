@@ -25,12 +25,13 @@ public class ApiLatency : IApiLatency
 
     public async Task Process()
     {
-        PrintTitle();
+        AnsiConsole.Clear();
+        PrintTitle(_options.IsLoadTest);
 
-        if (!_options.IsLoadTest)
-            await LatencyProcess();
-        else
+        if (_options.IsLoadTest)
             await LoadProcess();
+        else
+            await LatencyProcess();
     }
 
     private async Task LatencyProcess()
@@ -87,54 +88,71 @@ public class ApiLatency : IApiLatency
 
     private async Task LoadProcess()
     {
+        var totalRequests = 0;
         AnsiConsole.Foreground = Color.Grey58;
 
-        var latencies = new List<TimeSpan>(_options.NumberOfRequests);
+        var latencies = new List<TimeSpan>();
         var requestTasks = new List<Task<HttpResponseMessage>>();
-
-        var defaultRequest = _options.LoadOptions.DefaultRequest;
         
-        AnsiConsole.WriteLine($"Testing load for: {defaultRequest.Type} | {defaultRequest.Name} | {defaultRequest.Endpoint}");
-        int incrementCount = 0;
-        var iteration = 1;
-        while (incrementCount != _options.LoadOptions.Variables.Count)
+
+        var requests = _options.LoadOptions.Requests;
+        
+        var stopwatch = Stopwatch.StartNew();
+        foreach (var request in requests)
         {
-            var stopwatch = Stopwatch.StartNew();
-            foreach (var requestParam in _options.LoadOptions.Variables)
+            AnsiConsole.WriteLine($"Testing load for: {request.Type} | {request.Name} | {request.Endpoint}");
+            foreach (var requestParam in _options.LoadOptions.Variables[request.Name]) 
             {
-                defaultRequest.Body += requestParam;
-                var request = CreateRequest(defaultRequest);
-                var requestTask = _httpClient.SendAsync(request);
+                request.Body += requestParam;
+                var httpRequest = CreateRequest(request);
+                var requestTask = _httpClient.SendAsync(httpRequest);
                 requestTasks.Add(requestTask);
-                incrementCount++;
-                if (incrementCount >= _options.LoadOptions.Increment * iteration)
-                    break;
-                defaultRequest.Body = defaultRequest.Body.Replace(requestParam, string.Empty);
+                request.Body = request.Body.Replace(requestParam, string.Empty);
+                totalRequests++;
             }
-
-            var responses = await Task.WhenAll(requestTasks);
-            var failedResponseMessages = responses.Where(x => !x.IsSuccessStatusCode);
-
-            foreach (var failedResponseMessage in failedResponseMessages)
-                AnsiConsole.MarkupLine($"[red]Error: {failedResponseMessage.RequestMessage}[/]");
-
-            stopwatch.Stop();
-            var elapsedTime = stopwatch.Elapsed;
-            AnsiConsole.MarkupLine(
-                $"[{DisplayConstants.Secondary}]Batch of [/] {incrementCount} requests took {elapsedTime.TotalMilliseconds} ms");
-            incrementCount = 0;     
-            iteration++;
-            requestTasks.Clear();
         }
 
-        Console.ReadLine();
-        AnsiConsole.Clear();
+        var responses = await Task.WhenAll(requestTasks);
+        var failedResponseMessages = responses.Where(x => !x.IsSuccessStatusCode).ToList();
+
+        
+        AnsiConsole.MarkupLine($"[green]Successful Requests: {totalRequests - failedResponseMessages.Count}[/]");
+        AnsiConsole.MarkupLine($"[red]Failed Requests: {failedResponseMessages.Count}[/]");
+
+        stopwatch.Stop();
+        var elapsedTime = stopwatch.Elapsed;
+        AnsiConsole.MarkupLine(
+            $"[{DisplayConstants.Secondary}]Batch of [/] {totalRequests} requests took {elapsedTime.TotalMilliseconds} ms");
+        
+        requestTasks.Clear();
+
+        AnsiConsole.MarkupLine($"[{DisplayConstants.Secondary}]Press R to run another load test, S to show failed requests, or any other key to exit[/]");
+        var key = Console.ReadKey();
+        
+        switch (key.Key)
+        {
+            case ConsoleKey.R:
+                await Process();
+                break;
+            case ConsoleKey.S:
+            {
+                foreach (var failedResponseMessage in failedResponseMessages) 
+                    AnsiConsole.MarkupLine($"[red]Successful: {failedResponseMessage.IsSuccessStatusCode} | {failedResponseMessage.ReasonPhrase} [/]");
+                break;
+            }
+            default:
+                AnsiConsole.MarkupLine($"[{DisplayConstants.Secondary}]Exiting...[/]");
+                AnsiConsole.Clear();
+                Environment.Exit(0);
+                break;
+        }
     }
 
-    private static void PrintTitle()
+
+    private static void PrintTitle(bool isLoadTest)
     {
         AnsiConsole.Write(
-            new FigletText("Latency Benchmark")
+            new FigletText(isLoadTest ? "Load Benchmark" : "Latency Benchmark")
                 .Centered()
                 .Color(Color.Grey82));
     }
@@ -189,7 +207,7 @@ public class ApiLatency : IApiLatency
 
     private void DisplayChart(IEnumerable<TimeSpan> orderedLatencies, string requestName)
     {
-        PrintTitle();
+        PrintTitle(_options.IsLoadTest);
         Padding();
 
         var bucketSize = _options.DisplayOptions.BucketSizeInMilliseconds;
