@@ -109,6 +109,7 @@ public class ApiLatency : IApiLatency
                 incrementCount++;
                 if (incrementCount >= _options.LoadOptions.Increment * iteration)
                     break;
+                defaultRequest.Body = defaultRequest.Body.Replace(requestParam, string.Empty);
             }
 
             var responses = await Task.WhenAll(requestTasks);
@@ -123,6 +124,7 @@ public class ApiLatency : IApiLatency
                 $"[{DisplayConstants.Secondary}]Batch of [/] {incrementCount} requests took {elapsedTime.TotalMilliseconds} ms");
             incrementCount = 0;     
             iteration++;
+            requestTasks.Clear();
         }
 
         Console.ReadLine();
